@@ -5,10 +5,16 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <utility>
+
 using namespace std;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
+const int largeur = 1000;
+const int hauteur = 1000;
+std::vector<std::vector<int>> positions;
+std::vector<std::vector<int>> triangles;
 
 void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
 
@@ -50,7 +56,8 @@ std::vector<std::string> explode(std::string const & s, char delimitation)
 
     for (std::string token; std::getline(iss, token, delimitation); )
     {
-        res.push_back(std::move(token));
+        //ajoute delimiation
+            res.push_back(std::move(token));
     }
 
     return res;
@@ -66,16 +73,58 @@ void lectureFichier(std::string name, TGAImage &image){
         exit(1);
     }
 
-    string tmp;
-    std::vector<std::string> explode;
+    //declarations
+    std::string tmp;
+    std::vector<std::string> ex;
+    float a,b;
+    int t1,t2,t3;
+    std::vector<int> resultat;
+
+    //pour chaque ligne du fichier
     while (!file.eof()) {
         std::getline(file,tmp);
 
+        //recuperation des points
         if(tmp[0] == 'v' && tmp[1] == ' '){
-            //explode = explode(tmp,' ');
-            //image.set(std::stoi(explode.at(1)),std::stoi(explode.at(2)),red);
+            ex = explode(tmp,' ');
+
+            //recuperation des valeurs
+            std::istringstream streamA(ex[1]);
+            streamA >> a;
+            std::istringstream streamB(ex[2]);
+            streamB >> b;
+            a = a*largeur;
+            b = b*hauteur;
+
+            //on passe tout au dessus de 0
+            if(a < 0){
+                a = a+(largeur/2);
+            }
+            if(b < 0){
+                b = b+(hauteur/2);
+            }
+
+            resultat.push_back(a);
+            resultat.push_back(b);
+            positions.push_back(resultat);
+                //image.set(a, b, red);
+            resultat.clear();
         }
-            //image.set(x,y,red);
+        //recuperations des triangles a tracer
+        if(tmp[0] == 'f' && tmp[1] == ' '){
+            ex = explode(tmp,' ');
+            std::istringstream streamT1(explode(ex[1],'/')[0]);
+            streamT1 >> t1;
+            std::istringstream streamT2(explode(ex[2],'/')[0]);
+            streamT2 >> t2;
+            std::istringstream streamT3(explode(ex[3],'/')[0]);
+            streamT3 >> t3;
+            resultat.push_back(t1);
+            resultat.push_back(t2);
+            resultat.push_back(t3);
+            triangles.push_back(resultat);
+            resultat.clear();
+        }
     }
     file.close();
 }
@@ -85,12 +134,28 @@ int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
 
-    TGAImage image(100, 100, TGAImage::RGB);
+    TGAImage image(largeur, hauteur, TGAImage::RGB);
 
-    lectureFichier("../test.obj",image);
+    lectureFichier("../african_head.obj",image);
 
-    //image.set(52, 41, red);
-    drawLine(40,20,100,80,image,red);
+    //affichage des points
+    for(int i =0;i < positions.size();i++){
+        image.set(positions[i][0],positions[i][1],red);
+    }
+
+
+    //dessin des lignes
+    int d,b,c;
+    /*for(int i = 0;i < triangles.size();i++){
+        d = triangles[i][0];
+        b = triangles[i][1];
+        c = triangles[i][2];
+        drawLine(positions[d][0],positions[d][1],positions[b][0],positions[b][1],image,red);
+        drawLine(positions[d][0],positions[d][1],positions[c][0],positions[c][1],image,red);
+        drawLine(positions[b][0],positions[b][1],positions[c][0],positions[c][1],image,red);
+    }*/
+    image.set(0,0,white);
+    //drawLine(40,20,100,80,image,red);
     image.flip_vertically();
     image.write_tga_file("output.tga");
     return 0;

@@ -9,6 +9,8 @@ QT       += core
 QT       -= gui
 
 TARGET = rendererProjet
+
+CONFIG   += c++11
 CONFIG   += console
 CONFIG   -= app_bundle
 
