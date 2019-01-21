@@ -1,6 +1,6 @@
 #include "tgaimage.h"
-#include <QCoreApplication>
 #include "utilitaire.h"
+#include <vector>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -58,44 +58,6 @@ void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
                error2 -= dx*2;
            }
        }
-}
-
-vector<Point> getLine(int x0, int y0,int x1, int y1){
-
-    vector<Point> res;
-    Point p;
-    bool steep = false;
-       if (std::abs(x0-x1)<std::abs(y0-y1)) {
-           std::swap(x0, y0);
-           std::swap(x1, y1);
-           steep = true;
-       }
-       if (x0>x1) {
-           std::swap(x0, x1);
-           std::swap(y0, y1);
-       }
-       int dx = x1-x0;
-       int dy = y1-y0;
-       int derror2 = std::abs(dy)*2;
-       int error2 = 0;
-       int y = y0;
-       for (int x=x0; x<=x1; x++) {
-           if (steep) {
-               p.x = y;
-               p.y = x;
-           } else {
-               p.x = x;
-               p.y = y;
-           }
-           res.push_back(p);
-           error2 += derror2;
-           if (error2 > dx) {
-               y += (y1>y0?1:-1);
-               error2 -= dx*2;
-           }
-       }
-
-       return res;
 }
 
 std::vector<std::string> explode(std::string const & s, char delimitation)
@@ -174,45 +136,57 @@ void lectureFichier(std::string name, TGAImage &image){
 void remplissageTriangle(TGAImage &image){
     Triangle t;
     TGAColor tga;
-    vector<Point> p,p2,p3;
-    int base,hauteur;
+	float pente1, pente2, x1, x2;
+	int tmp;
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
         tga = TGAColor(rand() % 256,rand() % 256,rand() % 256,255);
+
+		//on range les sommets dans l'ordre : axe y
         if(t.a.y < t.b.y) std::swap(t.a,t.b);
         if(t.a.y < t.c.y) std::swap(t.a,t.c);
         if(t.b.y < t.c.y) std::swap(t.b,t.c);
 
-        p = getLine(t.a.x, t.a.y,t.c.x, t.c.y);
-        p2 = getLine(t.a.x, t.a.y,t.b.x, t.b.y);
-        p3 = getLine(t.b.x, t.b.y,t.c.x, t.c.y);
         drawLine(t.a.x,t.a.y,t.c.x,t.c.y,image,tga);
         drawLine(t.a.x,t.a.y,t.b.x,t.b.y,image,tga);
         drawLine(t.b.x,t.b.y,t.c.x,t.c.y,image,tga);
 
-        int o = 0;
-        int m = 0;
-        int temporaire = 0;
-        while(m < p2.size()){
-            if(p[o].y == p2[m].y){
-                drawLine(p[o].x,p[o].y,p2[m].x,p2[m].y,image,tga);
-                temporaire = o;
-                /*while(temporaire == o)*/
-                    o++;
-            }
-            m++;
+		//calcule de la pente gauche et drotie du triangle
+		tmp = (t.b.y - t.a.y);
+		if(tmp != 0)
+			pente1 = (t.b.x - t.a.x) / (float)tmp;
+		else pente1 = 0;
 
-        }
-        m = 0;
-        while(m < p3.size()){
-            if(p[o].y == p3[m].y){
-                drawLine(p[o].x,p[o].y,p3[m].x,p3[m].y,image,tga);
-                /*while(temporaire == o)
-                    o++;*/
-                o++;
-            }
-            m++;
-        }
+		tmp = (t.c.y - t.a.y);
+		if(tmp != 0)
+			pente2 = (t.c.x - t.a.x) / (float)tmp;
+		else pente2 = 0;
+		
+		//positio nde depart x : point le plus haut du triangle
+		x1 = t.a.x;
+		x2 = x1;
+		//on prend le point avec le y le plus haut comme depart et on va jusqu'au y du point en dessous
+		for (int h = t.a.y; h >= t.b.y; h--) {
+			drawLine((int)x1,h,(int)x2,h,image,tga);
+			x1 -= pente1;
+			x2 -= pente2;
+		}
+
+
+
+		//on recalcul la pente 1
+		tmp = (t.c.y - t.b.y);
+		if (tmp != 0)
+			pente1 = (t.c.x - t.b.x) / (float)tmp;
+		else pente1 = 0;
+		x1 = t.c.x;
+		x2 = x1;
+		//on garde la pente2 : deja calculé correspont au coté le plus long du triangle
+		for (int h = t.c.y; h < t.b.y; h++) {
+			drawLine((int)x1, h, (int)x2, h, image, tga);
+			x1 += pente1;
+			x2 += pente2;
+		}
 
     }
 
@@ -241,7 +215,6 @@ void affichageLignes(TGAImage &image){
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
 
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
