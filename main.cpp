@@ -1,6 +1,7 @@
 #include "tgaimage.h"
 #include "utilitaire.h"
 #include <vector>
+#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -12,6 +13,10 @@ using namespace std;
 struct Point {
   int x;
   int y;
+  int z;
+  float Rx;
+  float Ry;
+  float Rz;
 };
 struct Triangle {
   Point a;
@@ -23,6 +28,7 @@ const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int largeur = 1000;
 const int hauteur = 1000;
+const int profondeur = 1000;
 std::vector<Point> positions;
 std::vector<Triangle> triangles;
 
@@ -86,7 +92,7 @@ void lectureFichier(std::string name, TGAImage &image){
     //declarations
     std::string tmp;
     std::vector<std::string> ex;
-    float a,b;
+    float a,b,c;
     int t1,t2,t3;
     Point p;
     Triangle t;
@@ -104,13 +110,22 @@ void lectureFichier(std::string name, TGAImage &image){
             streamA >> a;
             std::istringstream streamB(ex[2]);
             streamB >> b;
+            std::istringstream streamC(ex[3]);
+            streamC >> c;
+
+            p = Point();
+
+            p.Rx = a;
+            p.Ry = b;
+            p.Rz = c;
 
             a = a*(largeur/2)+(largeur/2);
             b = b*(hauteur/2)+(hauteur/2);
+            c = c*(profondeur/2)+(profondeur/2);
 
-            p = Point();
             p.x = a;
             p.y = b;
+            p.z = c;
             positions.push_back(p);
         }
         //recuperations des triangles a tracer
@@ -133,61 +148,105 @@ void lectureFichier(std::string name, TGAImage &image){
     file.close();
 }
 
+void colorTriangle(TGAImage &image, TGAColor tga,int i){
+
+    Triangle t;
+    t = triangles[i];
+    float pente1, pente2, x1, x2;
+    int tmp;
+    //on range les sommets dans l'ordre : axe y
+    if(t.a.y < t.b.y) std::swap(t.a,t.b);
+    if(t.a.y < t.c.y) std::swap(t.a,t.c);
+    if(t.b.y < t.c.y) std::swap(t.b,t.c);
+
+    drawLine(t.a.x,t.a.y,t.c.x,t.c.y,image,tga);
+    drawLine(t.a.x,t.a.y,t.b.x,t.b.y,image,tga);
+    drawLine(t.b.x,t.b.y,t.c.x,t.c.y,image,tga);
+
+    //calcule de la pente gauche et drotie du triangle
+    tmp = (t.b.y - t.a.y);
+    if(tmp != 0)
+        pente1 = (t.b.x - t.a.x) / (float)tmp;
+    else pente1 = 0;
+
+    tmp = (t.c.y - t.a.y);
+    if(tmp != 0)
+        pente2 = (t.c.x - t.a.x) / (float)tmp;
+    else pente2 = 0;
+
+    //positio nde depart x : point le plus haut du triangle
+    x1 = t.a.x;
+    x2 = x1;
+    //on prend le point avec le y le plus haut comme depart et on va jusqu'au y du point en dessous
+    for (int h = t.a.y; h >= t.b.y; h--) {
+        drawLine((int)x1,h,(int)x2,h,image,tga);
+        x1 -= pente1;
+        x2 -= pente2;
+    }
+
+
+
+    //on recalcul la pente 1
+    tmp = (t.c.y - t.b.y);
+    if (tmp != 0)
+        pente1 = (t.c.x - t.b.x) / (float)tmp;
+    else pente1 = 0;
+    x1 = t.c.x;
+    x2 = x1;
+    //on garde la pente2 : deja calculé correspont au coté le plus long du triangle
+    for (int h = t.c.y; h < t.b.y; h++) {
+        drawLine((int)x1, h, (int)x2, h, image, tga);
+        x1 += pente1;
+        x2 += pente2;
+    }
+}
+
 void remplissageTriangle(TGAImage &image){
     Triangle t;
     TGAColor tga;
-	float pente1, pente2, x1, x2;
-	int tmp;
+    float tmp;
+    float light_dir[3] = {1,1,1};
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
-        tga = TGAColor(rand() % 256,rand() % 256,rand() % 256,255);
+        //tga = TGAColor(rand() % 256,rand() % 256,rand() % 256,255);
 
-		//on range les sommets dans l'ordre : axe y
-        if(t.a.y < t.b.y) std::swap(t.a,t.b);
-        if(t.a.y < t.c.y) std::swap(t.a,t.c);
-        if(t.b.y < t.c.y) std::swap(t.b,t.c);
+        float vector1[3];
+        float vector2[3];
+        float normale[3];
 
-        drawLine(t.a.x,t.a.y,t.c.x,t.c.y,image,tga);
-        drawLine(t.a.x,t.a.y,t.b.x,t.b.y,image,tga);
-        drawLine(t.b.x,t.b.y,t.c.x,t.c.y,image,tga);
+        //x
+        vector1[0] = (t.a.x - t.b.x);
+        vector2[0] = (t.a.x - t.c.x);
 
-		//calcule de la pente gauche et drotie du triangle
-		tmp = (t.b.y - t.a.y);
-		if(tmp != 0)
-			pente1 = (t.b.x - t.a.x) / (float)tmp;
-		else pente1 = 0;
+        //y
+        vector1[1] = (t.a.y - t.b.y);
+        vector2[1] = (t.a.y - t.c.y);
 
-		tmp = (t.c.y - t.a.y);
-		if(tmp != 0)
-			pente2 = (t.c.x - t.a.x) / (float)tmp;
-		else pente2 = 0;
-		
-		//positio nde depart x : point le plus haut du triangle
-		x1 = t.a.x;
-		x2 = x1;
-		//on prend le point avec le y le plus haut comme depart et on va jusqu'au y du point en dessous
-		for (int h = t.a.y; h >= t.b.y; h--) {
-			drawLine((int)x1,h,(int)x2,h,image,tga);
-			x1 -= pente1;
-			x2 -= pente2;
-		}
+        //z
+        vector2[2] = (t.a.z - t.b.z);
+        vector2[2] = (t.a.z - t.c.z);
 
+        //creation de la normale
+        normale[0] = vector1[1] * vector2[2] - vector1[2] * vector2[1];
+        normale[1] = vector2[2] * vector1[0] - vector2[0] * vector1[2];
+        normale[2] = vector1[0] * vector2[1] - vector1[1] * vector2[0];
 
+        //normalisation
+        float norme  = std::sqrt(normale[0]*normale[0]+normale[1]*normale[1]+normale[2]*normale[2]);
+        normale[0] = normale[0]/norme;
+        normale[1] = normale[1]/norme;
+        normale[2] = normale[2]/norme;
 
-		//on recalcul la pente 1
-		tmp = (t.c.y - t.b.y);
-		if (tmp != 0)
-			pente1 = (t.c.x - t.b.x) / (float)tmp;
-		else pente1 = 0;
-		x1 = t.c.x;
-		x2 = x1;
-		//on garde la pente2 : deja calculé correspont au coté le plus long du triangle
-		for (int h = t.c.y; h < t.b.y; h++) {
-			drawLine((int)x1, h, (int)x2, h, image, tga);
-			x1 += pente1;
-			x2 += pente2;
-		}
+        tmp = 0;
+        for (int m=0; m<3; m++)
+             tmp += light_dir[m]*normale[m];
 
+        tmp *= std::cos(tmp/(std::sqrt(normale[0]*normale[0]+normale[1]*normale[1]+normale[2]*normale[2])*std::sqrt(light_dir[0]*light_dir[0]+light_dir[1]*light_dir[1]+light_dir[2]*light_dir[2])));
+
+        cout << tmp << "\n";
+
+        if(tmp > 0)
+            colorTriangle(image,TGAColor(255*tmp,255*tmp,255*tmp,255),i);
     }
 
 
@@ -202,7 +261,6 @@ void affichagePoint(TGAImage &image){
 
 void affichageLignes(TGAImage &image){
     //dessin des lignes
-    int d,b,c;
     Triangle t;
     for(int i = 0;i < triangles.size();i++){
         t = triangles[i];
