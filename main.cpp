@@ -31,10 +31,11 @@ const int hauteur = 1000;
 const int profondeur = 1000;
 std::vector<Point> positions;
 std::vector<Triangle> triangles;
+float zBuffer[largeur][hauteur];
 
 
 
-
+//dessin ligne simple
 void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
 
     bool steep = false;
@@ -54,9 +55,9 @@ void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
        int y = y0;
        for (int x=x0; x<=x1; x++) {
            if (steep) {
-               image.set(y, x, color);
+				image.set(y, x, color);
            } else {
-               image.set(x, y, color);
+				image.set(x, y, color);
            }
            error2 += derror2;
            if (error2 > dx) {
@@ -66,6 +67,46 @@ void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
        }
 }
 
+//dessin ligne avec utilisation du zbuffer
+void lineZBuffer(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color, int z) {
+
+	bool steep = false;
+	if (std::abs(x0 - x1) < std::abs(y0 - y1)) {
+		std::swap(x0, y0);
+		std::swap(x1, y1);
+		steep = true;
+	}
+	if (x0 > x1) {
+		std::swap(x0, x1);
+		std::swap(y0, y1);
+	}
+	int dx = x1 - x0;
+	int dy = y1 - y0;
+	int derror2 = std::abs(dy) * 2;
+	int error2 = 0;
+	int y = y0;
+	for (int x = x0; x <= x1; x++) {
+		if (steep) {
+			if (zBuffer[y][x] < z) {
+				zBuffer[y][x] = z;
+				image.set(y, x, color);
+			}
+		}
+		else {
+			if (zBuffer[x][y] < z) {
+				zBuffer[x][y] = z;
+				image.set(x, y, color);
+			}
+		}
+		error2 += derror2;
+		if (error2 > dx) {
+			y += (y1 > y0 ? 1 : -1);
+			error2 -= dx * 2;
+		}
+	}
+}
+
+//explosion d'une chaine de caractère
 std::vector<std::string> explode(std::string const & s, char delimitation)
 {
     std::vector<std::string> res; // resultat
@@ -79,6 +120,7 @@ std::vector<std::string> explode(std::string const & s, char delimitation)
     return res;
 }
 
+//lecture du fichier et recupératio ndes informations
 void lectureFichier(std::string name, TGAImage &image){
 
     ifstream file;
@@ -148,6 +190,7 @@ void lectureFichier(std::string name, TGAImage &image){
     file.close();
 }
 
+//colorisation d'un triangle
 void colorTriangle(TGAImage &image, TGAColor tga,int i){
 
     Triangle t;
@@ -158,10 +201,6 @@ void colorTriangle(TGAImage &image, TGAColor tga,int i){
     if(t.a.y < t.b.y) std::swap(t.a,t.b);
     if(t.a.y < t.c.y) std::swap(t.a,t.c);
     if(t.b.y < t.c.y) std::swap(t.b,t.c);
-
-    drawLine(t.a.x,t.a.y,t.c.x,t.c.y,image,tga);
-    drawLine(t.a.x,t.a.y,t.b.x,t.b.y,image,tga);
-    drawLine(t.b.x,t.b.y,t.c.x,t.c.y,image,tga);
 
     //calcule de la pente gauche et drotie du triangle
     tmp = (t.b.y - t.a.y);
@@ -174,12 +213,13 @@ void colorTriangle(TGAImage &image, TGAColor tga,int i){
         pente2 = (t.c.x - t.a.x) / (float)tmp;
     else pente2 = 0;
 
-    //positio nde depart x : point le plus haut du triangle
+    //position de depart x : point le plus haut du triangle
     x1 = t.a.x;
     x2 = x1;
+
     //on prend le point avec le y le plus haut comme depart et on va jusqu'au y du point en dessous
     for (int h = t.a.y; h >= t.b.y; h--) {
-        drawLine((int)x1,h,(int)x2,h,image,tga);
+        lineZBuffer((int)x1,h,(int)x2,h,image,tga,t.a.z);
         x1 -= pente1;
         x2 -= pente2;
     }
@@ -195,17 +235,18 @@ void colorTriangle(TGAImage &image, TGAColor tga,int i){
     x2 = x1;
     //on garde la pente2 : deja calculé correspont au coté le plus long du triangle
     for (int h = t.c.y; h < t.b.y; h++) {
-        drawLine((int)x1, h, (int)x2, h, image, tga);
+        lineZBuffer((int)x1, h, (int)x2, h, image, tga,t.a.z);
         x1 += pente1;
         x2 += pente2;
     }
 }
 
+//colorisation de tout les triangle avec backface culling
 void remplissageTriangle(TGAImage &image){
     Triangle t;
     TGAColor tga;
     float tmp;
-    float light_dir[3] = {1,1,1};
+    float light_dir[3] = {0,0,1};
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
         //tga = TGAColor(rand() % 256,rand() % 256,rand() % 256,255);
@@ -215,16 +256,16 @@ void remplissageTriangle(TGAImage &image){
         float normale[3];
 
         //x
-        vector1[0] = (t.a.x - t.b.x);
-        vector2[0] = (t.a.x - t.c.x);
+        vector1[0] = (t.b.x - t.a.x);
+        vector2[0] = (t.c.x - t.a.x);
 
         //y
-        vector1[1] = (t.a.y - t.b.y);
-        vector2[1] = (t.a.y - t.c.y);
+        vector1[1] = (t.b.y - t.a.y);
+        vector2[1] = (t.c.y - t.a.y);
 
         //z
-        vector2[2] = (t.a.z - t.b.z);
-        vector2[2] = (t.a.z - t.c.z);
+        vector1[2] = (t.b.z - t.a.z);
+        vector2[2] = (t.c.z - t.a.z);
 
         //creation de la normale
         normale[0] = vector1[1] * vector2[2] - vector1[2] * vector2[1];
@@ -241,10 +282,6 @@ void remplissageTriangle(TGAImage &image){
         for (int m=0; m<3; m++)
              tmp += light_dir[m]*normale[m];
 
-        tmp *= std::cos(tmp/(std::sqrt(normale[0]*normale[0]+normale[1]*normale[1]+normale[2]*normale[2])*std::sqrt(light_dir[0]*light_dir[0]+light_dir[1]*light_dir[1]+light_dir[2]*light_dir[2])));
-
-        cout << tmp << "\n";
-
         if(tmp > 0)
             colorTriangle(image,TGAColor(255*tmp,255*tmp,255*tmp,255),i);
     }
@@ -252,6 +289,7 @@ void remplissageTriangle(TGAImage &image){
 
 }
 
+//affichage des sommets des triangles
 void affichagePoint(TGAImage &image){
     //affichage des points
     for(int i =0;i < positions.size();i++){
@@ -259,6 +297,7 @@ void affichagePoint(TGAImage &image){
     }
 }
 
+//affichages des arrètes des triangles
 void affichageLignes(TGAImage &image){
     //dessin des lignes
     Triangle t;
@@ -273,7 +312,11 @@ void affichageLignes(TGAImage &image){
 
 int main(int argc, char *argv[])
 {
-
+	for (int i = 0; i < largeur;i++) {
+		for (int j = 0; j < hauteur;j++) {
+			zBuffer[i][j] = std::numeric_limits<int>::min();
+		}
+	}
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
     lectureFichier("../african_head.obj",image);
