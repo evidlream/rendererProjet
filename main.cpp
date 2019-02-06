@@ -14,24 +14,31 @@ struct Point {
   int x;
   int y;
   int z;
-  float Rx;
-  float Ry;
-  float Rz;
 };
 struct Triangle {
   Point a;
   Point b;
   Point c;
+
+  Point texA;
+  Point texB;
+  Point texC;
+
 } ;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int largeur = 1000;
-const int hauteur = 1000;
+const int largeur = 1024;
+const int hauteur = 1024;
 const int profondeur = 1000;
 std::vector<Point> positions;
+std::vector<Point> posTex;
 std::vector<Triangle> triangles;
 float zBuffer[largeur][hauteur];
+
+TGAImage texture;
+float ratioLargeur;
+float ratioHauteur;
 
 
 
@@ -68,7 +75,7 @@ void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
 }
 
 //dessin ligne avec utilisation du zbuffer
-void lineZBuffer(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color, int z) {
+void lineZBuffer(int x0, int y0, int x1, int y1, TGAImage &image, int z) {
 
 	bool steep = false;
 	if (std::abs(x0 - x1) < std::abs(y0 - y1)) {
@@ -89,13 +96,13 @@ void lineZBuffer(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color
 		if (steep) {
 			if (zBuffer[y][x] < z) {
 				zBuffer[y][x] = z;
-				image.set(y, x, color);
+				image.set(y, x, texture.get(?,?));
 			}
 		}
 		else {
 			if (zBuffer[x][y] < z) {
 				zBuffer[x][y] = z;
-				image.set(x, y, color);
+				image.set(x, y, texture.get(?,?));
 			}
 		}
 		error2 += derror2;
@@ -125,6 +132,8 @@ void lectureFichier(std::string name, TGAImage &image){
 
     ifstream file;
 
+	std::vector<std::string> exp;
+
     file.open(name.c_str());
     if (!file){
         cout << "Pas de fichier\n";
@@ -135,7 +144,7 @@ void lectureFichier(std::string name, TGAImage &image){
     std::string tmp;
     std::vector<std::string> ex;
     float a,b,c;
-    int t1,t2,t3;
+    int t1,t2,t3,tex1,tex2,tex3;
     Point p;
     Triangle t;
 
@@ -144,22 +153,20 @@ void lectureFichier(std::string name, TGAImage &image){
         std::getline(file,tmp);
 
         //recuperation des points
-        if(tmp[0] == 'v' && tmp[1] == ' '){
+        if(tmp[0] == 'v' && (tmp[1] == ' ' || tmp[1] == 't')){
             ex = explode(tmp,' ');
 
             //recuperation des valeurs
-            std::istringstream streamA(ex[1]);
-            streamA >> a;
-            std::istringstream streamB(ex[2]);
-            streamB >> b;
-            std::istringstream streamC(ex[3]);
-            streamC >> c;
+            std::istringstream stream(ex[1]);
+            stream >> a;
+            stream.str(ex[2]);
+			stream.seekg(0);
+            stream >> b;
+            stream.str(ex[3]);
+			stream.seekg(0);
+            stream >> c;
 
             p = Point();
-
-            p.Rx = a;
-            p.Ry = b;
-            p.Rz = c;
 
             a = a*(largeur/2)+(largeur/2);
             b = b*(hauteur/2)+(hauteur/2);
@@ -168,22 +175,52 @@ void lectureFichier(std::string name, TGAImage &image){
             p.x = a;
             p.y = b;
             p.z = c;
-            positions.push_back(p);
+
+			if(tmp[1] == 't') 
+				posTex.push_back(p);
+			else positions.push_back(p);
+
         }
         //recuperations des triangles a tracer
         if(tmp[0] == 'f' && tmp[1] == ' '){
             ex = explode(tmp,' ');
-            std::istringstream streamT1(explode(ex[1],'/')[0]);
-            streamT1 >> t1;
-            std::istringstream streamT2(explode(ex[2],'/')[0]);
-            streamT2 >> t2;
-            std::istringstream streamT3(explode(ex[3],'/')[0]);
-            streamT3 >> t3;
+			exp = explode(ex[1], '/');
 
+			//point a
+            std::istringstream stream(exp[0]);
+            stream >> t1;
+			stream.str(exp[1]);
+			stream.seekg(0);
+			stream >> tex1;
+
+			//point b
+			exp = explode(ex[2], '/');
+			stream.str(exp[0]);
+			stream.seekg(0);
+            stream >> t2;
+			stream.str(exp[1]);
+			stream.seekg(0);
+			stream >> tex2;
+
+			//point c
+			exp = explode(ex[3], '/');
+            stream.str(exp[0]);
+			stream.seekg(0);
+            stream >> t3;
+			stream.str(exp[1]);
+			stream.seekg(0);
+			stream >> tex3;
+
+			//creation du triangle
             t = Triangle();
             t.a = positions[t1-1];
             t.b = positions[t2-1];
             t.c = positions[t3-1];
+
+			t.texA = posTex[tex1 - 1];
+			t.texB = posTex[tex2 - 1];
+			t.texC = posTex[tex3 - 1];
+
             triangles.push_back(t);
         }
     }
@@ -191,7 +228,7 @@ void lectureFichier(std::string name, TGAImage &image){
 }
 
 //colorisation d'un triangle
-void colorTriangle(TGAImage &image, TGAColor tga,int i){
+void colorTriangle(TGAImage &image, int i){
 
     Triangle t;
     t = triangles[i];
@@ -219,12 +256,10 @@ void colorTriangle(TGAImage &image, TGAColor tga,int i){
 
     //on prend le point avec le y le plus haut comme depart et on va jusqu'au y du point en dessous
     for (int h = t.a.y; h >= t.b.y; h--) {
-        lineZBuffer((int)x1,h,(int)x2,h,image,tga,t.a.z);
+        lineZBuffer((int)x1,h,(int)x2,h,image,t.a.z);
         x1 -= pente1;
         x2 -= pente2;
     }
-
-
 
     //on recalcul la pente 1
     tmp = (t.c.y - t.b.y);
@@ -235,7 +270,7 @@ void colorTriangle(TGAImage &image, TGAColor tga,int i){
     x2 = x1;
     //on garde la pente2 : deja calculé correspont au coté le plus long du triangle
     for (int h = t.c.y; h < t.b.y; h++) {
-        lineZBuffer((int)x1, h, (int)x2, h, image, tga,t.a.z);
+        lineZBuffer((int)x1, h, (int)x2, h, image, t.a.z);
         x1 += pente1;
         x2 += pente2;
     }
@@ -249,7 +284,6 @@ void remplissageTriangle(TGAImage &image){
     float light_dir[3] = {0,0,1};
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
-        //tga = TGAColor(rand() % 256,rand() % 256,rand() % 256,255);
 
         float vector1[3];
         float vector2[3];
@@ -283,7 +317,7 @@ void remplissageTriangle(TGAImage &image){
              tmp += light_dir[m]*normale[m];
 
         if(tmp > 0)
-            colorTriangle(image,TGAColor(255*tmp,255*tmp,255*tmp,255),i);
+            colorTriangle(image,i);
     }
 
 
@@ -319,12 +353,22 @@ int main(int argc, char *argv[])
 	}
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
-    lectureFichier("../african_head.obj",image);
+	texture.read_tga_file("../african_head_diffuse.tga");
+	texture.flip_vertically();
 
-    remplissageTriangle(image);
+    lectureFichier("../african_head.obj",image);
+	//lecture de la texture
+
+	ratioLargeur = texture.get_width() / (float)largeur;
+	ratioHauteur = texture.get_height() / (float)hauteur;
+	remplissageTriangle(image);
+    //remplissageTriangle(image);
 
     image.flip_vertically();
     image.write_tga_file("output.tga");
+
+	while (1) {}
+
     return 0;
 
 }
