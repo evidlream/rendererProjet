@@ -158,23 +158,33 @@ void lectureFichier(std::string name, TGAImage &image){
         if(tmp[0] == 'v' && (tmp[1] == ' ' || tmp[1] == 't')){
             ex = explode(tmp,' ');
             std::istringstream stream;
-            if(tmp[1] == ' ')
-                //recuperation des valeurs
-                stream.str(ex[1]);
-            else stream.str(ex[2]);
+
+            int i = 1;//decallage de 2 pour "vt"
+            if(tmp[1] == 't') i = 2;
+
+            stream.str(ex[i]);
             stream >> a;
-            stream.str(ex[2]);
+            stream.str(ex[i+1]);
             stream.seekg(0);
             stream >> b;
-            stream.str(ex[3]);
+            stream.str(ex[i+2]);
 			stream.seekg(0);
             stream >> c;
 
             p = Point();
 
-            a = a*(largeur/2)+(largeur/2);
-            b = b*(hauteur/2)+(hauteur/2);
-            c = c*(profondeur/2)+(profondeur/2);
+
+
+            if(tmp[1] != 't'){
+                a = a*(largeur/2)+(largeur/2);
+                b = b*(hauteur/2)+(hauteur/2);
+                c = c*(profondeur/2)+(profondeur/2);
+            }
+            else{
+                a = a*largeur;
+                b = b*hauteur;
+                c = c*profondeur;
+            }
 
             p.x = a;
             p.y = b;
@@ -182,7 +192,7 @@ void lectureFichier(std::string name, TGAImage &image){
 
             if(tmp[1] == 't')
 				posTex.push_back(p);
-			else positions.push_back(p);
+            else positions.push_back(p);
 
         }
         //recuperations des triangles a tracer
@@ -240,10 +250,10 @@ Point soustractionPoint(Point a, Point b){
 }
 
 //colorisation d'un triangle
-void colorTriangle(TGAImage &image, int i,float intensity){
+void colorTriangle(TGAImage &image, int numTriangle,float intensity){
 
     //Cramer's rule
-    Triangle t = triangles[i];
+    Triangle t = triangles[numTriangle];
     Point p1,p2,p3,p,tex;
     TGAColor color;
 
@@ -260,15 +270,16 @@ void colorTriangle(TGAImage &image, int i,float intensity){
         p.x = i;
         for(int j = minY; j < maxY;j++){
             p.y = j;
-            p1 = soustractionPoint(t.b,t.a);
-            p2 = soustractionPoint(t.c,t.a);
-            p3 = soustractionPoint(p,t.a);
 
-            div = p1.x * p2.y - p2.x * p1.y;
+            p1 = t.a;
+            p2 = t.b;
+            p3 = t.c;
+
+            float div = (float)((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
 
             if(div != 0){
-                beta = (p1.x * p3.y - p3.x * p1.y)/div;
-                alpha = (p3.x * p2.y - p2.x * p3.y)/div;
+                alpha = ((p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y)) / div;
+                beta = ((p3.y - p1.y) * (p.x - p3.x) + (p1.x - p3.x) * (p.y - p3.y)) / div;
             }
             else{
                 beta = -1;
@@ -281,7 +292,7 @@ void colorTriangle(TGAImage &image, int i,float intensity){
                     zBuffer[p.x][p.y] = p.z;
                     tex.x = alpha * t.texA.x + beta * t.texB.x + gamma * t.texC.x;
                     tex.y = alpha * t.texA.y + beta * t.texB.y + gamma * t.texC.y;
-                    //cout << tex.x << "\n";
+
                     color = texture.get(tex.x,tex.y);
                     image.set(p.x,p.y,color.operator *(intensity));
                 }
@@ -371,7 +382,7 @@ int main(int argc, char *argv[])
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
 	texture.read_tga_file("../african_head_diffuse.tga");
-    //texture.flip_vertically();
+    texture.flip_vertically();
 
     lectureFichier("../african_head.obj",image);
 	//lecture de la texture
@@ -379,7 +390,7 @@ int main(int argc, char *argv[])
 	ratioLargeur = texture.get_width() / (float)largeur;
 	ratioHauteur = texture.get_height() / (float)hauteur;
 	remplissageTriangle(image);
-    //remplissageTriangle(image);
+
 
     image.flip_vertically();
     image.write_tga_file("output.tga");
