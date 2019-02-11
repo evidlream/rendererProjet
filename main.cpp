@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <utility>
+#include <algorithm>
 
 using namespace std;
 
@@ -19,7 +20,7 @@ struct Triangle {
   Point a;
   Point b;
   Point c;
-
+  //coordonéne des textures
   Point texA;
   Point texB;
   Point texC;
@@ -31,16 +32,50 @@ const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int largeur = 1024;
 const int hauteur = 1024;
 const int profondeur = 1024;
+const int tailleMatrix = 4; // taille des matrice : projection
 std::vector<Point> positions;
 std::vector<Point> posTex;
 std::vector<Triangle> triangles;
 float zBuffer[largeur][hauteur];
 
 TGAImage texture;
-float ratioLargeur;
-float ratioHauteur;
+Point camera;
 
+//matrice identité 4x4
+void matriceIdentite(float res[][tailleMatrix]) {
 
+	for (int i = 0; i < tailleMatrix;i++) {
+		res[i][i] = 1;
+	}
+
+}
+
+void pointToMatrice(float x, float y, float z,float res[][tailleMatrix]) {
+	res[0][0] = x;
+	res[0][1] = y;
+	res[0][2] = z;
+	res[0][tailleMatrix-1] = 1;
+}
+
+void matriceToPoint(float res[][tailleMatrix], Point &p) {
+	p.x = res[0][0]/res[0][tailleMatrix-1] * (largeur / 2) + (largeur / 2);
+	p.y = res[0][1]/res[0][tailleMatrix-1] * (hauteur / 2) + (hauteur / 2);
+	p.z = res[0][2]/res[0][tailleMatrix-1] * (profondeur / 2) + (profondeur / 2);
+}
+
+void matriceMult(float a[][tailleMatrix] ,float b[][tailleMatrix] ,float res[][tailleMatrix]) {
+
+	for (int i = 0; i < tailleMatrix;i++) {
+		for (int j = 0;j < tailleMatrix;j++) {
+			res[0][i] += a[i][j] * b[0][j];
+		}
+	
+	}
+}
+
+void ajout4D(float a[][tailleMatrix],float valeur, int pos) {
+	a[tailleMatrix-1][pos] = valeur;
+}
 
 //dessin ligne simple
 void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
@@ -149,6 +184,10 @@ void lectureFichier(std::string name, TGAImage &image){
     int t1,t2,t3,tex1,tex2,tex3;
     Point p;
     Triangle t;
+	
+	float matrix[4][4] = {};
+	matriceIdentite(matrix);
+	ajout4D(matrix, -1 / (float)camera.z, 2);
 
     //pour chaque ligne du fichier
     while (!file.eof()) {
@@ -174,21 +213,20 @@ void lectureFichier(std::string name, TGAImage &image){
             p = Point();
 
 
-
             if(tmp[1] != 't'){
-                a = a*(largeur/2)+(largeur/2);
-                b = b*(hauteur/2)+(hauteur/2);
-                c = c*(profondeur/2)+(profondeur/2);
+				//projection
+				float point[1][4] = {}; //on stock ici le point courant que l'on traite
+				pointToMatrice(a , b , c , point);
+				float res[1][4] = {}; //resultat de la multiplication
+				matriceMult(matrix, point, res);
+				matriceToPoint(res, p);
+
             }
             else{
-                a = a*largeur;
-                b = b*hauteur;
-                c = c*profondeur;
+				p.x = a*largeur;
+				p.y = b*hauteur;
+				p.z = c*profondeur;
             }
-
-            p.x = a;
-            p.y = b;
-            p.z = c;
 
             if(tmp[1] == 't')
 				posTex.push_back(p);
@@ -239,14 +277,6 @@ void lectureFichier(std::string name, TGAImage &image){
         }
     }
     file.close();
-}
-
-Point soustractionPoint(Point a, Point b){
-    Point res;
-    res.x = b.x - a.x;
-    res.y = b.y - a.y;
-    res.z = b.z - a.z;
-    return res;
 }
 
 //colorisation d'un triangle
@@ -371,28 +401,35 @@ void affichageLignes(TGAImage &image){
     }
 }
 
-
 int main(int argc, char *argv[])
 {
+	//remplissage zbuffer
 	for (int i = 0; i < largeur;i++) {
 		for (int j = 0; j < hauteur;j++) {
             zBuffer[i][j] = -50000;
 		}
 	}
+
+	//camera
+	camera.x = 0;
+	camera.y = 0;
+	camera.z = 3;
+
+	//creation image
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
+	//lecture texture
 	texture.read_tga_file("../african_head_diffuse.tga");
     texture.flip_vertically();
 
+	//lecture obj
     lectureFichier("../african_head.obj",image);
-	//lecture de la texture
 
-	ratioLargeur = texture.get_width() / (float)largeur;
-	ratioHauteur = texture.get_height() / (float)hauteur;
+	//remplissage de l'image
 	remplissageTriangle(image);
-
-
     image.flip_vertically();
+
+	//ecriture
     image.write_tga_file("output.tga");
 
     return 0;
