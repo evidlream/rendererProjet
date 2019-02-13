@@ -25,7 +25,10 @@ struct Triangle {
   Point texA;
   Point texB;
   Point texC;
-
+  //norme : vn
+  Point normA;
+  Point normB;
+  Point normC;
 } ;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
@@ -36,6 +39,7 @@ const int profondeur = 800;
 const int tailleMatrix = 4; // taille des matrice : projection
 std::vector<Point> positions;
 std::vector<Point> posTex;
+std::vector<Point> vn;
 std::vector<Triangle> triangles;
 float zBuffer[largeur][hauteur];
 
@@ -189,7 +193,7 @@ void lectureFichier(std::string name, TGAImage &image){
     std::string tmp;
     std::vector<std::string> ex;
     float a,b,c;
-    int t1,t2,t3,tex1,tex2,tex3;
+    int t1,t2,t3,tex1,tex2,tex3,vn1,vn2,vn3;
     Point p;
     Triangle t;
 	
@@ -210,12 +214,12 @@ void lectureFichier(std::string name, TGAImage &image){
         std::getline(file,tmp);
 
         //recuperation des points
-        if(tmp[0] == 'v' && (tmp[1] == ' ' || tmp[1] == 't')){
+        if(tmp[0] == 'v' && (tmp[1] == ' ' || tmp[1] == 't' || tmp[1] == 'n')){
             ex = explode(tmp,' ');
             std::istringstream stream;
 
-            int i = 1;//decallage de 2 pour "vt"
-            if(tmp[1] == 't') i = 2;
+            int i = 1;//decallage de 2 pour "vt" ou vn
+            if(tmp[1] == 't' || tmp[1] == 'n') i = 2;
 
             stream.str(ex[i]);
             stream >> a;
@@ -229,26 +233,29 @@ void lectureFichier(std::string name, TGAImage &image){
             p = Point();
 
 
-            if(tmp[1] != 't'){
+            if(tmp[1] == ' '){
 				//projection
 				float point[1][4] = {}; //on stock ici le point courant que l'on traite
 				pointToMatrice(a , b , c , point);
-				//matriceMult(modelView, point, point);
+				matriceMult(modelView, point, point);
 				matriceMult(matrix, point, point);
 				matriceMult(viewPort,point,point);
 				matriceToPoint(point, p);
 				//cout << p.x << "  " << p.y << "  " << p.z << "\n";
+				positions.push_back(p);
             }
-            else{
+            else if(tmp[1] == 't'){
 				p.x = a*texture.get_width();
 				p.y = b*texture.get_height();
 				p.z = c;
-            }
-
-            if(tmp[1] == 't')
 				posTex.push_back(p);
-            else positions.push_back(p);
-
+            }
+			else if(tmp[1] == 'n') {
+				p.x = a;
+				p.y = b;
+				p.z = c;
+				vn.push_back(p);
+			}
         }
         //recuperations des triangles a tracer
         if(tmp[0] == 'f' && tmp[1] == ' '){
@@ -261,7 +268,9 @@ void lectureFichier(std::string name, TGAImage &image){
 			stream.str(exp[1]);
 			stream.seekg(0);
 			stream >> tex1;
-
+			stream.str(exp[2]);
+			stream.seekg(0);
+			stream >> vn1;
 			//point b
 			exp = explode(ex[2], '/');
 			stream.str(exp[0]);
@@ -270,6 +279,9 @@ void lectureFichier(std::string name, TGAImage &image){
 			stream.str(exp[1]);
 			stream.seekg(0);
 			stream >> tex2;
+			stream.str(exp[2]);
+			stream.seekg(0);
+			stream >> vn2;
 
 			//point c
 			exp = explode(ex[3], '/');
@@ -279,6 +291,9 @@ void lectureFichier(std::string name, TGAImage &image){
 			stream.str(exp[1]);
 			stream.seekg(0);
 			stream >> tex3;
+			stream.str(exp[2]);
+			stream.seekg(0);
+			stream >> vn3;
 
 			//creation du triangle
             t = Triangle();
@@ -290,6 +305,10 @@ void lectureFichier(std::string name, TGAImage &image){
 			t.texB = posTex[tex2 - 1];
 			t.texC = posTex[tex3 - 1];
 
+			t.normA = vn[vn1-1];
+			t.normB = vn[vn2-1];
+			t.normC = vn[vn3-1];
+
             triangles.push_back(t);
         }
     }
@@ -297,7 +316,7 @@ void lectureFichier(std::string name, TGAImage &image){
 }
 
 //colorisation d'un triangle
-void colorTriangle(TGAImage &image, int numTriangle,float intensity){
+void colorTriangle(TGAImage &image, int numTriangle,float intensity[3]){
 
     Triangle t = triangles[numTriangle];
     Point p1,p2,p3,p,tex;
@@ -340,7 +359,8 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity){
                     tex.y = alpha * t.texA.y + beta * t.texB.y + gamma * t.texC.y;
 
                     color = texture.get(tex.x,tex.y);
-                    image.set(p.x,p.y,color.operator *(intensity));
+					float intens = alpha * intensity[0] + beta * intensity[1] + gamma * intensity[2];
+                    image.set(p.x,p.y,color.operator *(intens));
                 }
             }
         }
@@ -353,6 +373,7 @@ void remplissageTriangle(TGAImage &image){
     TGAColor tga;
     float tmp;
     Point light_dir;
+	float intensity[3];
 	light_dir.x = 0;
 	light_dir.y = 0;
 	light_dir.z = 1;
@@ -372,13 +393,21 @@ void remplissageTriangle(TGAImage &image){
         //normalisation
 		normalize(normale);
 
-        tmp = 0;
-		tmp += light_dir.x * normale.x;
-		tmp += light_dir.y * normale.y;
-		tmp += light_dir.z * normale.z;
+        //tmp = 0;
+		//tmp += light_dir.x * normale.x + light_dir.y * normale.y + light_dir.z * normale.z;
 
-        if(tmp > 0)
-            colorTriangle(image,i,tmp);
+		Point a = t.normA;
+		normalize(a);
+		intensity[0] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
+		a = t.normB;
+		normalize(a);
+		intensity[1] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
+		a = t.normC;
+		normalize(a);
+		intensity[2] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
+
+        //if(tmp > 0)
+            colorTriangle(image,i,intensity);
     }
 }
 
@@ -393,7 +422,7 @@ int main(int argc, char *argv[])
 
 	//camera
 	camera.x = 1;
-	camera.y = 1;
+	camera.y = 0;
 	camera.z = 3;
 
 	center.x = 0;
