@@ -12,10 +12,11 @@
 using namespace std;
 
 struct Point {
-  int x;
-  int y;
-  int z;
+  float x;
+  float y;
+  float z;
 };
+
 struct Triangle {
   Point a;
   Point b;
@@ -29,9 +30,9 @@ struct Triangle {
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int largeur = 1024;
-const int hauteur = 1024;
-const int profondeur = 1024;
+const int largeur = 800;
+const int hauteur = 800;
+const int profondeur = 800;
 const int tailleMatrix = 4; // taille des matrice : projection
 std::vector<Point> positions;
 std::vector<Point> posTex;
@@ -40,6 +41,7 @@ float zBuffer[largeur][hauteur];
 
 TGAImage texture;
 Point camera;
+Point center;
 
 //matrice identité 4x4
 void matriceIdentite(float res[][tailleMatrix]) {
@@ -58,18 +60,23 @@ void pointToMatrice(float x, float y, float z,float res[][tailleMatrix]) {
 }
 
 void matriceToPoint(float res[][tailleMatrix], Point &p) {
-	p.x = res[0][0]/res[0][tailleMatrix-1] * (largeur / 2) + (largeur / 2);
-	p.y = res[0][1]/res[0][tailleMatrix-1] * (hauteur / 2) + (hauteur / 2);
-	p.z = res[0][2]/res[0][tailleMatrix-1] * (profondeur / 2) + (profondeur / 2);
+	p.x = res[0][0] / res[0][tailleMatrix - 1];// *(largeur / 2) + (largeur / 2);
+	p.y = res[0][1] / res[0][tailleMatrix - 1];// *(hauteur / 2) + (hauteur / 2);
+	p.z = res[0][2] / res[0][tailleMatrix - 1];// *(profondeur / 2) + (profondeur / 2);
 }
 
 void matriceMult(float a[][tailleMatrix] ,float b[][tailleMatrix] ,float res[][tailleMatrix]) {
+	float tmp[1][4];
+
+	for (int k = 0;k < tailleMatrix;k++) {
+		tmp[0][k] = b[0][k];
+		res[0][k] = 0;
+	}
 
 	for (int i = 0; i < tailleMatrix;i++) {
 		for (int j = 0;j < tailleMatrix;j++) {
-			res[0][i] += a[i][j] * b[0][j];
+			res[0][i] += a[i][j] * tmp[0][j];
 		}
-	
 	}
 }
 
@@ -77,77 +84,74 @@ void ajout4D(float a[][tailleMatrix],float valeur, int pos) {
 	a[tailleMatrix-1][pos] = valeur;
 }
 
-//dessin ligne simple
-void drawLine(int x0, int y0,int x1, int y1, TGAImage &image, TGAColor color){
-
-    bool steep = false;
-       if (std::abs(x0-x1)<std::abs(y0-y1)) {
-           std::swap(x0, y0);
-           std::swap(x1, y1);
-           steep = true;
-       }
-       if (x0>x1) {
-           std::swap(x0, x1);
-           std::swap(y0, y1);
-       }
-       int dx = x1-x0;
-       int dy = y1-y0;
-       int derror2 = std::abs(dy)*2;
-       int error2 = 0;
-       int y = y0;
-       for (int x=x0; x<=x1; x++) {
-           if (steep) {
-				image.set(y, x, color);
-           } else {
-				image.set(x, y, color);
-           }
-           error2 += derror2;
-           if (error2 > dx) {
-               y += (y1>y0?1:-1);
-               error2 -= dx*2;
-           }
-       }
+void normalize(Point &p) {
+	//normalisation
+	float norme = std::sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+	p.x = p.x / norme;
+	p.y = p.y / norme;
+	p.z = p.z / norme;
 }
 
-//dessin ligne avec utilisation du zbuffer
-void lineZBuffer(int x0, int y0, int x1, int y1, TGAImage &image, int z) {
+void soustraction(Point &a, Point &b, Point &res) {
+	res.x = a.x - b.x;
+	res.y = a.y - b.y;
+	res.z = a.z - b.z;
+}
 
-	bool steep = false;
-    if (std::abs(x0 - x1) < std::abs(y0 - y1)) {
-		std::swap(x0, y0);
-		std::swap(x1, y1);
-		steep = true;
-	}
-	if (x0 > x1) {
-		std::swap(x0, x1);
-		std::swap(y0, y1);
-	}
-	int dx = x1 - x0;
-	int dy = y1 - y0;
-	int derror2 = std::abs(dy) * 2;
-	int error2 = 0;
-	int y = y0;
+void cross(Point &a, Point &b, Point &res) {
+	res.x = a.y * b.z - a.z * b.y;
+	res.y = b.z * a.x - b.x * a.z;
+	res.z = a.x * b.y - a.y * b.x;
+}
 
-	for (int x = x0; x <= x1; x++) {
+void lookAt(float res[][4]) {
+	Point up;
+	up.x = 0;
+	up.y = 1;
+	up.z = 0;
 
-		if (steep) {
-			if (zBuffer[y][x] < z) {
-                zBuffer[y][x] = z;
-                image.set(y, x, red);
-			}
-		}
-		else {
-			if (zBuffer[x][y] < z) {
-				zBuffer[x][y] = z;
-                image.set(x, y, red);
-			}
-		}
-		error2 += derror2;
-		if (error2 > dx) {
-			y += (y1 > y0 ? 1 : -1);
-			error2 -= dx * 2;
-		}
-	}
+	Point z;
+	soustraction(camera, center, z);
+	normalize(z);
+
+	Point x;
+	cross(up,z,x);
+	normalize(x);
+
+	Point y;
+	cross(z, x, y);
+	normalize(y);
+
+	matriceIdentite(res);
+
+	//resultat
+	res[0][0] = x.x;
+	res[0][1] = x.y;
+	res[0][2] = x.z;
+	res[0][3] = -center.x;
+
+	res[1][0] = y.x;
+	res[1][1] = y.y;
+	res[1][2] = y.z;
+	res[1][3] = -center.y;
+
+	res[2][0] = z.x;
+	res[2][1] = z.y;
+	res[2][2] = z.z;
+	res[2][3] = -center.z;
+
+}
+
+void viewport(int x, int y, int w, int h, float res[][4]) {
+	
+	matriceIdentite(res);
+	res[0][3] = x + w / 2.f;
+	res[1][3] = y + h / 2.f;
+	res[2][3] = profondeur / 2.f;
+
+	res[0][0] = w / 2.f;
+	res[1][1] = h / 2.f;
+	res[2][2] = profondeur / 2.f;
 }
 
 //explosion d'une chaine de caractère
@@ -171,6 +175,10 @@ void lectureFichier(std::string name, TGAImage &image){
 
 	std::vector<std::string> exp;
 
+	//model view
+	float modelView[4][4] = {};
+	lookAt(modelView);
+
     file.open(name.c_str());
     if (!file){
         cout << "Pas de fichier\n";
@@ -185,9 +193,17 @@ void lectureFichier(std::string name, TGAImage &image){
     Point p;
     Triangle t;
 	
+	//projection
 	float matrix[4][4] = {};
 	matriceIdentite(matrix);
-	ajout4D(matrix, -1 / (float)camera.z, 2);
+	Point n;
+	soustraction(camera,center,n);
+	float norme = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+	ajout4D(matrix, -1 / norme, 2);
+
+	//viewport
+	float viewPort[tailleMatrix][tailleMatrix] = {};
+	viewport(largeur / 8, hauteur / 8, largeur * 3 / 4, hauteur * 3 / 4, viewPort);
 
     //pour chaque ligne du fichier
     while (!file.eof()) {
@@ -217,15 +233,16 @@ void lectureFichier(std::string name, TGAImage &image){
 				//projection
 				float point[1][4] = {}; //on stock ici le point courant que l'on traite
 				pointToMatrice(a , b , c , point);
-				float res[1][4] = {}; //resultat de la multiplication
-				matriceMult(matrix, point, res);
-				matriceToPoint(res, p);
-
+				//matriceMult(modelView, point, point);
+				matriceMult(matrix, point, point);
+				matriceMult(viewPort,point,point);
+				matriceToPoint(point, p);
+				//cout << p.x << "  " << p.y << "  " << p.z << "\n";
             }
             else{
-				p.x = a*largeur;
-				p.y = b*hauteur;
-				p.z = c*profondeur;
+				p.x = a*texture.get_width();
+				p.y = b*texture.get_height();
+				p.z = c;
             }
 
             if(tmp[1] == 't')
@@ -282,7 +299,6 @@ void lectureFichier(std::string name, TGAImage &image){
 //colorisation d'un triangle
 void colorTriangle(TGAImage &image, int numTriangle,float intensity){
 
-    //Cramer's rule
     Triangle t = triangles[numTriangle];
     Point p1,p2,p3,p,tex;
     TGAColor color;
@@ -305,11 +321,11 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity){
             p2 = t.b;
             p3 = t.c;
 
-            float div = (float)((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
+            float div = (float)(((int)p2.y - (int)p3.y) * ((int)p1.x - (int)p3.x) + ((int)p3.x - (int)p2.x) * ((int)p1.y - (int)p3.y));
 
             if(div != 0){
-                alpha = ((p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y)) / div;
-                beta = ((p3.y - p1.y) * (p.x - p3.x) + (p1.x - p3.x) * (p.y - p3.y)) / div;
+                alpha = (((int)p2.y - (int)p3.y) * ((int)p.x - (int)p3.x) + ((int)p3.x - (int)p2.x) * ((int)p.y - (int)p3.y)) / div;
+                beta = (((int)p3.y - (int)p1.y) * ((int)p.x - (int)p3.x) + ((int)p1.x - (int)p3.x) * ((int)p.y - (int)p3.y)) / div;
             }
             else{
                 beta = -1;
@@ -318,8 +334,8 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity){
 
             gamma = 1.0f - alpha - beta;
             if(gamma >= -.001 && alpha >= -.001 && beta >= -.001){
-                if(p.z > zBuffer[p.x][p.y]){
-                    zBuffer[p.x][p.y] = p.z;
+                if(p.z > zBuffer[(int)p.x][(int)p.y]){
+                    zBuffer[(int)p.x][(int)p.y] = p.z;
                     tex.x = alpha * t.texA.x + beta * t.texB.x + gamma * t.texC.x;
                     tex.y = alpha * t.texA.y + beta * t.texB.y + gamma * t.texC.y;
 
@@ -328,10 +344,7 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity){
                 }
             }
         }
-
     }
-
-
 }
 
 //colorisation de tout les triangle avec backface culling
@@ -339,65 +352,33 @@ void remplissageTriangle(TGAImage &image){
     Triangle t;
     TGAColor tga;
     float tmp;
-    float light_dir[3] = {0,0,1};
+    Point light_dir;
+	light_dir.x = 0;
+	light_dir.y = 0;
+	light_dir.z = 1;
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
 
-        float vector1[3];
-        float vector2[3];
-        float normale[3];
+        Point vector1;
+        Point vector2;
+        Point normale;
 
-        //x
-        vector1[0] = (t.b.x - t.a.x);
-        vector2[0] = (t.c.x - t.a.x);
-
-        //y
-        vector1[1] = (t.b.y - t.a.y);
-        vector2[1] = (t.c.y - t.a.y);
-
-        //z
-        vector1[2] = (t.b.z - t.a.z);
-        vector2[2] = (t.c.z - t.a.z);
+		soustraction(t.b, t.a, vector1);
+		soustraction(t.c, t.a, vector2);
 
         //creation de la normale
-        normale[0] = vector1[1] * vector2[2] - vector1[2] * vector2[1];
-        normale[1] = vector2[2] * vector1[0] - vector2[0] * vector1[2];
-        normale[2] = vector1[0] * vector2[1] - vector1[1] * vector2[0];
+		cross(vector1 ,vector2 ,normale);
 
         //normalisation
-        float norme  = std::sqrt(normale[0]*normale[0]+normale[1]*normale[1]+normale[2]*normale[2]);
-        normale[0] = normale[0]/norme;
-        normale[1] = normale[1]/norme;
-        normale[2] = normale[2]/norme;
+		normalize(normale);
 
         tmp = 0;
-        for (int m=0; m<3; m++)
-             tmp += light_dir[m]*normale[m];
+		tmp += light_dir.x * normale.x;
+		tmp += light_dir.y * normale.y;
+		tmp += light_dir.z * normale.z;
 
         if(tmp > 0)
             colorTriangle(image,i,tmp);
-    }
-
-
-}
-
-//affichage des sommets des triangles
-void affichagePoint(TGAImage &image){
-    //affichage des points
-    for(int i =0;i < positions.size();i++){
-        image.set(positions[i].x,positions[i].y,white);
-    }
-}
-
-//affichages des arrètes des triangles
-void affichageLignes(TGAImage &image){
-    //dessin des lignes
-    Triangle t;
-    for(int i = 0;i < triangles.size();i++){
-        t = triangles[i];
-        drawLine(t.a.x,t.a.y,t.b.x,t.b.y,image,white);
-        drawLine(t.a.x,t.a.y,t.c.x,t.c.y,image,white);
-        drawLine(t.b.x,t.b.y,t.c.x,t.c.y,image,white);
     }
 }
 
@@ -406,14 +387,18 @@ int main(int argc, char *argv[])
 	//remplissage zbuffer
 	for (int i = 0; i < largeur;i++) {
 		for (int j = 0; j < hauteur;j++) {
-            zBuffer[i][j] = -50000;
+            zBuffer[i][j] = std::numeric_limits<float>::min();
 		}
 	}
 
 	//camera
-	camera.x = 0;
-	camera.y = 0;
+	camera.x = 1;
+	camera.y = 1;
 	camera.z = 3;
+
+	center.x = 0;
+	center.y = 0;
+	center.z = 0;
 
 	//creation image
     TGAImage image(largeur, hauteur, TGAImage::RGB);
@@ -433,5 +418,4 @@ int main(int argc, char *argv[])
     image.write_tga_file("output.tga");
 
     return 0;
-
 }
