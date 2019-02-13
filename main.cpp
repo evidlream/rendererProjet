@@ -1,5 +1,4 @@
 #include "tgaimage.h"
-#include "utilitaire.h"
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -33,9 +32,9 @@ struct Triangle {
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int largeur = 800;
-const int hauteur = 800;
-const int profondeur = 800;
+const int largeur = 2000;
+const int hauteur = 2000;
+const int profondeur = 255;
 const int tailleMatrix = 4; // taille des matrice : projection
 std::vector<Point> positions;
 std::vector<Point> posTex;
@@ -44,6 +43,7 @@ std::vector<Triangle> triangles;
 float zBuffer[largeur][hauteur];
 
 TGAImage texture;
+TGAImage diffuse_nm;
 Point camera;
 Point center;
 
@@ -193,14 +193,14 @@ void lectureFichier(std::string name, TGAImage &image){
     std::string tmp;
     std::vector<std::string> ex;
     float a,b,c;
-    int t1,t2,t3,tex1,tex2,tex3,vn1,vn2,vn3;
+    int t1,t2,t3,tex1,tex2,tex3,vn1,vn2,vn3,i;
     Point p;
     Triangle t;
-	
+
 	//projection
 	float matrix[4][4] = {};
 	matriceIdentite(matrix);
-	Point n;
+    Point n;
 	soustraction(camera,center,n);
 	float norme = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
 	ajout4D(matrix, -1 / norme, 2);
@@ -218,7 +218,7 @@ void lectureFichier(std::string name, TGAImage &image){
             ex = explode(tmp,' ');
             std::istringstream stream;
 
-            int i = 1;//decallage de 2 pour "vt" ou vn
+            i = 1;//decallage de 2 pour "vt" ou vn
             if(tmp[1] == 't' || tmp[1] == 'n') i = 2;
 
             stream.str(ex[i]);
@@ -241,7 +241,7 @@ void lectureFichier(std::string name, TGAImage &image){
 				matriceMult(matrix, point, point);
 				matriceMult(viewPort,point,point);
 				matriceToPoint(point, p);
-				//cout << p.x << "  " << p.y << "  " << p.z << "\n";
+
 				positions.push_back(p);
             }
             else if(tmp[1] == 't'){
@@ -316,15 +316,20 @@ void lectureFichier(std::string name, TGAImage &image){
 }
 
 //colorisation d'un triangle
-void colorTriangle(TGAImage &image, int numTriangle,float intensity[3]){
+void colorTriangle(TGAImage &image, int numTriangle){
 
     Triangle t = triangles[numTriangle];
     Point p1,p2,p3,p,tex;
     TGAColor color;
+    Point light_dir;
+    light_dir.x = 0;
+    light_dir.y = 0;
+    light_dir.z = 1;
 
-    p.z = t.a.z;
+    normalize(camera);
 
     float div,alpha,beta,gamma;
+    float intens ;
 
     int minX = std::min(std::min(t.a.x,t.b.x),t.c.x);
     int maxX = std::max(std::max(t.a.x,t.b.x),t.c.x);
@@ -340,7 +345,7 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity[3]){
             p2 = t.b;
             p3 = t.c;
 
-            float div = (float)(((int)p2.y - (int)p3.y) * ((int)p1.x - (int)p3.x) + ((int)p3.x - (int)p2.x) * ((int)p1.y - (int)p3.y));
+            div = (float)(((int)p2.y - (int)p3.y) * ((int)p1.x - (int)p3.x) + ((int)p3.x - (int)p2.x) * ((int)p1.y - (int)p3.y));
 
             if(div != 0){
                 alpha = (((int)p2.y - (int)p3.y) * ((int)p.x - (int)p3.x) + ((int)p3.x - (int)p2.x) * ((int)p.y - (int)p3.y)) / div;
@@ -352,15 +357,43 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity[3]){
             }
 
             gamma = 1.0f - alpha - beta;
+
+            p.z = t.a.z*alpha + t.b.z * beta + t.c.z * gamma;
             if(gamma >= -.001 && alpha >= -.001 && beta >= -.001){
                 if(p.z > zBuffer[(int)p.x][(int)p.y]){
                     zBuffer[(int)p.x][(int)p.y] = p.z;
                     tex.x = alpha * t.texA.x + beta * t.texB.x + gamma * t.texC.x;
                     tex.y = alpha * t.texA.y + beta * t.texB.y + gamma * t.texC.y;
 
+                    TGAColor t = diffuse_nm.get(tex.x,tex.y);
+                    TGAColor res;
+
+                    Point pnm;
+                    pnm.x = (int)t.bgra[0];
+                    pnm.y = (int)t.bgra[1];
+                    pnm.z = (int)t.bgra[2];
+                    normalize(pnm);
+
+                    normalize(light_dir);
                     color = texture.get(tex.x,tex.y);
-					float intens = alpha * intensity[0] + beta * intensity[1] + gamma * intensity[2];
-                    image.set(p.x,p.y,color.operator *(intens));
+
+
+                    float ambiant = 7;
+                    float diffuse = light_dir.z * pnm.z + light_dir.y * pnm.y + light_dir.x * pnm.x;
+
+                    if(diffuse < 0){
+                        diffuse = 0;
+                    }
+
+
+                    for(int i = 0;i < 3;i++){
+                         res[i] = std::min<float>(ambiant + color[i]*diffuse, 255);
+                    }
+                    res[3] = 255;
+
+
+
+                    image.set(p.x,p.y,res);
                 }
             }
         }
@@ -370,44 +403,13 @@ void colorTriangle(TGAImage &image, int numTriangle,float intensity[3]){
 //colorisation de tout les triangle avec backface culling
 void remplissageTriangle(TGAImage &image){
     Triangle t;
-    TGAColor tga;
-    float tmp;
+
     Point light_dir;
-	float intensity[3];
-	light_dir.x = 0;
-	light_dir.y = 0;
-	light_dir.z = 1;
+
     for(int i =0;i < triangles.size();i++){
         t = triangles[i];
 
-        Point vector1;
-        Point vector2;
-        Point normale;
-
-		soustraction(t.b, t.a, vector1);
-		soustraction(t.c, t.a, vector2);
-
-        //creation de la normale
-		cross(vector1 ,vector2 ,normale);
-
-        //normalisation
-		normalize(normale);
-
-        //tmp = 0;
-		//tmp += light_dir.x * normale.x + light_dir.y * normale.y + light_dir.z * normale.z;
-
-		Point a = t.normA;
-		normalize(a);
-		intensity[0] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
-		a = t.normB;
-		normalize(a);
-		intensity[1] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
-		a = t.normC;
-		normalize(a);
-		intensity[2] = light_dir.x * a.x + light_dir.y * a.y + light_dir.z * a.z;
-
-        //if(tmp > 0)
-            colorTriangle(image,i,intensity);
+        colorTriangle(image,i);
     }
 }
 
@@ -421,9 +423,9 @@ int main(int argc, char *argv[])
 	}
 
 	//camera
-	camera.x = 1;
-	camera.y = 0;
-	camera.z = 3;
+    camera.x = 0;
+    camera.y = 0;
+    camera.z = 3;
 
 	center.x = 0;
 	center.y = 0;
@@ -433,15 +435,18 @@ int main(int argc, char *argv[])
     TGAImage image(largeur, hauteur, TGAImage::RGB);
 
 	//lecture texture
-	texture.read_tga_file("../african_head_diffuse.tga");
+    texture.read_tga_file("../african_head_diffuse.tga");
     texture.flip_vertically();
+
+    diffuse_nm.read_tga_file("../african_head_nm.tga");
+    diffuse_nm.flip_vertically();
 
 	//lecture obj
     lectureFichier("../african_head.obj",image);
 
 	//remplissage de l'image
 	remplissageTriangle(image);
-    image.flip_vertically();
+    //image.flip_vertically();
 
 	//ecriture
     image.write_tga_file("output.tga");
