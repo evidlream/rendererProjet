@@ -326,10 +326,7 @@ void colorTriangle(TGAImage &image, int numTriangle){
     light_dir.y = 0;
     light_dir.z = 1;
 
-    normalize(camera);
-
     float div,alpha,beta,gamma;
-    float intens ;
 
     int minX = std::min(std::min(t.a.x,t.b.x),t.c.x);
     int maxX = std::max(std::max(t.a.x,t.b.x),t.c.x);
@@ -366,7 +363,6 @@ void colorTriangle(TGAImage &image, int numTriangle){
                     tex.y = alpha * t.texA.y + beta * t.texB.y + gamma * t.texC.y;
 
                     TGAColor t = diffuse_nm.get(tex.x,tex.y);
-                    TGAColor res;
 
                     Point pnm;
                     pnm.x = (int)t.bgra[0];
@@ -377,23 +373,13 @@ void colorTriangle(TGAImage &image, int numTriangle){
                     normalize(light_dir);
                     color = texture.get(tex.x,tex.y);
 
-
-                    float ambiant = 7;
                     float diffuse = light_dir.z * pnm.z + light_dir.y * pnm.y + light_dir.x * pnm.x;
 
                     if(diffuse < 0){
                         diffuse = 0;
                     }
 
-
-                    for(int i = 0;i < 3;i++){
-                         res[i] = std::min<float>(ambiant + color[i]*diffuse, 255);
-                    }
-                    res[3] = 255;
-
-
-
-                    image.set(p.x,p.y,res);
+                    image.set(p.x,p.y,color.operator *(diffuse));
                 }
             }
         }
@@ -423,8 +409,8 @@ int main(int argc, char *argv[])
 	}
 
 	//camera
-    camera.x = 0;
-    camera.y = 0;
+    camera.x = 2;
+    camera.y = 1;
     camera.z = 3;
 
 	center.x = 0;
